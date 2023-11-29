@@ -39,6 +39,17 @@ impl ECAffinePoint {
         // checks
         assert!(self.y != other.y, "should use doubling");
 
+        /**
+         * Formula
+         * 
+         *           y2 - y1
+         * slope =  ---------
+         *           x2 - x1
+         * 
+         * x3 = slope ** 2 - x1 - x2
+         * y3 = slope(x1 - x3) - y1
+         */
+
         // implementation
         if self.is_zero_point() {
             return other.clone();
@@ -64,6 +75,18 @@ impl ECAffinePoint {
     }
 
     pub fn double<T: SECP256>(&self, _: T) -> Self {
+        /*
+         * Formula
+         * 
+         *           (3 * (x ** 2)) + a
+         * slope =  -------------------
+         *                2 * y
+         * 
+         * x3 = slope ** 2 - x1 - x2
+         * y3 = slope(x1 - x3) - y1
+         */
+
+
         // implementation
         if self.is_zero_point() {
             return Self::zero_point();
@@ -104,6 +127,23 @@ impl JacobianPoint {
     }
 
     pub fn add<T: SECP256>(&self, other: &Self, curve: &T) -> Self {
+        /*
+         * u1 = x1 * (z2 ** 2)
+         * u2 = x2 * (z1 ** 2)
+         * s1 = y1 * (z2 ** 3)
+         * s2 = y2 * (z1 ** 3)
+         * 
+         * h = u2 - u1
+         * r = s2 - s1
+         * 
+         * h2 = h ** 2
+         * h3 = h ** 3
+         * 
+         * x3 = (r ** 2) - h3 - (2 * u1 * h2)
+         * y3 = r * ((u1 * h3) - x3) - (s1 * h3)
+         * z3 = h * z1 * z2
+         */
+
         // implementation
         if self.is_zero_point() {
             return other.clone();
@@ -149,6 +189,18 @@ impl JacobianPoint {
     }
 
     pub fn double<T: SECP256>(&self, _: &T) -> Self {
+        /*
+         * ysq = y ** 2
+         * s = 4 * x * ysq
+         * m = (3 * (x ** 3)) + (A * z1)
+         * 
+         * x3 = (m ** 2) - 2 * s
+         * y3 = m * (s = (x ** 3)) - 8 * (ysq ** 2)
+         * z3 = 2 * y1 * z1
+         */
+
+
+        // implementation
         let p = &T::p();
 
         let ysq = self.y.mul_mod(&self.y, p);
@@ -175,6 +227,9 @@ impl JacobianPoint {
     }
 
     pub fn multiply<T: SECP256>(self, scalar: &RU256, curve: &T) -> Self {
+        // Double and add method
+
+        // implementation
         let p = &T::p();
 
         if self.y == RU256::zero() || scalar == &RU256::zero() {
