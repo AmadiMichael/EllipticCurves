@@ -1,0 +1,11 @@
+[package]
+name = "elliptic_curve_rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+hex = "0.4.3"
+primitive-types = "0.12.2"
+ruint = "1.11.1"
