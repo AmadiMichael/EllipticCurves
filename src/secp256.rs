@@ -39,7 +39,7 @@ impl ECAffinePoint {
         // checks
         assert!(self.y != other.y, "should use doubling");
 
-        /**
+        /*
          * Formula
          * 
          *           y2 - y1
@@ -100,7 +100,7 @@ impl ECAffinePoint {
         let slope = self
             .x
             .exp_mod(&RU256::two(), p)
-            .mul_mod(&RU256::from_str("0x03").unwrap(), p)
+            .mul_mod(&RU256::three(), p)
             .add_mod(&T::a(), p)
             .div_mod(&self.y.mul_mod(&RU256::two(), p), p);
 
@@ -156,14 +156,14 @@ impl JacobianPoint {
 
         let u1 = self.x.mul_mod(&other.z.exp_mod(&RU256::two(), p), p);
         let u2 = other.x.mul_mod(&self.z.exp_mod(&RU256::two(), p), p);
-        let s1 = self.y.mul_mod(&other.z.exp_mod(&RU256::two(), p), p);
-        let s2 = other.y.mul_mod(&self.z.exp_mod(&RU256::two(), p), p);
+        let s1 = self.y.mul_mod(&other.z.exp_mod(&RU256::three(), p), p);
+        let s2 = other.y.mul_mod(&self.z.exp_mod(&RU256::three(), p), p);
 
         if u1 == u2 {
             if s1 == s2 {
                 return Self {
-                    x: RU256::two(),
-                    y: RU256::two(),
+                    x: RU256::zero(),
+                    y: RU256::zero(),
                     z: RU256::two(),
                 };
             }
@@ -206,18 +206,17 @@ impl JacobianPoint {
         let ysq = self.y.mul_mod(&self.y, p);
         let s = self
             .x
-            .mul_mod(&RU256::from_str("0x04").unwrap(), p)
+            .mul_mod(&RU256::four(), p)
             .mul_mod(&ysq, p);
         let m = self
             .x
             .mul_mod(&self.x, p)
-            .mul_mod(&RU256::from_str("0x03").unwrap(), p)
+            .mul_mod(&RU256::three(), p)
             .add_mod(&T::a().mul_mod(&self.z, p), p);
 
         let x = m.mul_mod(&m, p).sub_mod(&RU256::two().mul_mod(&s, p), p);
         let y = m.mul_mod(&s.sub_mod(&x, p), p).sub_mod(
-            &RU256::from_str("0x08")
-                .unwrap()
+            &RU256::eight()
                 .mul_mod(&ysq.mul_mod(&ysq, p), p),
             p,
         );
@@ -290,7 +289,7 @@ impl JacobianPoint {
         let x = self.x.mul_mod(&z.exp_mod(&RU256::two(), p), p);
         let y = self
             .y
-            .mul_mod(&z.exp_mod(&RU256::from_str("0x03").unwrap(), p), p);
+            .mul_mod(&z.exp_mod(&RU256::three(), p), p);
 
         ECAffinePoint { x, y }
     }

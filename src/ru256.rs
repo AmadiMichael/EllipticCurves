@@ -59,6 +59,15 @@ impl RU256 {
     pub fn two() -> Self {
         return Self::from_str("0x2").unwrap();
     }
+    pub fn three() -> Self {
+        return Self::from_str("0x3").unwrap();
+    }
+    pub fn four() -> Self {
+        return Self::from_str("0x4").unwrap();
+    }
+    pub fn eight() -> Self {
+        return Self::from_str("0x8").unwrap();
+    }
 
     // ******************************************************************
     // Modular Addition
