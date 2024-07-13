@@ -6,7 +6,7 @@ use hex;
 use primitive_types::U256;
 use std::str::FromStr;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialOrd)]
 pub struct RU256 {
     pub v: U256,
 }
