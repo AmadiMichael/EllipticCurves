@@ -29,14 +29,14 @@ impl ECAffinePoint {
     //         need to check during operations
     // ******************************************************************
 
-    pub fn zero_point() -> ECAffinePoint {
-        return ECAffinePoint {
+    pub fn zero_point() -> Self {
+        return Self {
             x: RU256::zero(),
             y: RU256::zero(),
         };
     }
 
-    pub fn add<T: SECP256>(&self, other: &Self, _: T) -> Self {
+    pub fn add<T: SECP256>(&self, other: &Self, _: &T) -> Self {
         // checks
         assert!(self.y != other.y, "should use doubling");
 
@@ -75,7 +75,7 @@ impl ECAffinePoint {
         Self { x, y }
     }
 
-    pub fn double<T: SECP256>(&self, _: T) -> Self {
+    pub fn double<T: SECP256>(&self, _: &T) -> Self {
         /*
          * Formula
          *
@@ -112,6 +112,45 @@ impl ECAffinePoint {
 
         Self { x, y }
     }
+
+    pub fn multiply<T: SECP256>(&self, scalar: &RU256, curve: &T) -> Self {
+        // Double and add method
+        /*
+         * R = 0
+         * LOOP: R = (R * 2) + scalar_in_bit[i] * self
+         * Note: i starts from 255 and goes down up until 0 (inclusive)
+         */
+        // implementation
+        if self.y == RU256::zero() || scalar == &RU256::zero() {
+            return Self::zero_point();
+        }
+        if scalar == &RU256::one() {
+            return self.clone();
+        }
+
+        let mut r = Self::zero_point();
+
+        let mut i = 255;
+        while i != -1 {
+            r = r.double(curve);
+            let bit = (scalar.v >> i) & U256::one();
+            if bit == U256::one() {
+                r = r.add(&self, curve);
+            }
+
+            i -= 1;
+        }
+
+        r
+    }
+
+    pub fn to_jacobian(self) -> JacobianPoint {
+        JacobianPoint {
+            x: self.x,
+            y: self.y,
+            z: RU256::one(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -129,6 +168,14 @@ pub struct JacobianPoint {
 impl JacobianPoint {
     pub fn is_zero_point(&self) -> bool {
         return self.x == RU256::zero() && self.y == RU256::zero();
+    }
+
+    pub fn zero_point() -> Self {
+        return Self {
+            x: RU256::zero(),
+            y: RU256::zero(),
+            z: RU256::one(),
+        };
     }
 
     pub fn add<T: SECP256>(&self, other: &Self, curve: &T) -> Self {
@@ -167,12 +214,8 @@ impl JacobianPoint {
         let s2 = other.y.mul_mod(&self.z.mul_mod(&z1z1, p), p);
 
         if u1 == u2 {
-            if s1 == s2 {
-                return Self {
-                    x: RU256::zero(),
-                    y: RU256::zero(),
-                    z: RU256::two(),
-                };
+            if s1 != s2 {
+                return Self::zero_point();
             }
             return self.double(curve);
         }
@@ -200,12 +243,16 @@ impl JacobianPoint {
         /*
          * ysq = y ** 2
          * s = 4 * x * ysq
-         * m = (3 * (x ** 2)) + (A * z1)
+         * m = (3 * (x ** 2)) + (A * (z ** 4))
          *
          * x3 = (m ** 2) - 2 * s
          * y3 = m * (s - x3) - (8 * (ysq ** 2))
          * z3 = 2 * y1 * z1
          */
+
+        if self.is_zero_point() {
+            return Self::zero_point();
+        }
 
         // implementation
         let p = &T::p();
@@ -216,7 +263,7 @@ impl JacobianPoint {
             .x
             .mul_mod(&self.x, p)
             .mul_mod(&RU256::three(), p)
-            .add_mod(&self.z.mul_mod(&T::a(), p), p);
+            .add_mod(&self.z.exp_mod(&RU256::four(), p).mul_mod(&T::a(), p), p);
 
         let x = m.mul_mod(&m, p).sub_mod(&RU256::two().mul_mod(&s, p), p);
         let y = m
@@ -232,23 +279,19 @@ impl JacobianPoint {
         /*
          * R = 0
          * LOOP: R = (R * 2) + scalar_in_bit[i] * self
-         * Note: i starts from 256 and goes down
+         * Note: i starts from 255 and goes down up until 0 (inclusive)
          */
         // implementation
         if self.y == RU256::zero() || scalar == &RU256::zero() {
-            return Self {
-                x: RU256::zero(),
-                y: RU256::zero(),
-                z: RU256::one(),
-            };
+            return Self::zero_point();
         }
         if scalar == &RU256::one() {
             return self;
         }
 
-        let mut r = JacobianPoint::to_jacobian(T::zero());
-
+        let mut r = Self::zero_point();
         let mut i = 255;
+
         while i != -1 {
             r = r.double(curve);
             let bit = (scalar.v >> i) & U256::one();
@@ -262,19 +305,12 @@ impl JacobianPoint {
         r
     }
 
-    pub fn to_jacobian(aff: ECAffinePoint) -> Self {
-        Self {
-            x: aff.x,
-            y: aff.y,
-            z: RU256::one(),
-        }
-    }
-
     pub fn from_jacobian<T: SECP256>(&self, _: &T) -> ECAffinePoint {
         let p = &T::p();
 
         let z = RU256::one().div_mod(&self.z, p);
         let zz = z.mul_mod(&z, p);
+
         let x = self.x.mul_mod(&zz, p);
         let y = self.y.mul_mod(&zz.mul_mod(&z, p), p);
 
@@ -296,13 +332,12 @@ impl Signature {
         nonce: &RU256,
         curve: &T,
     ) -> Signature {
-        let encoded_nonce = JacobianPoint::from_jacobian(
-            &JacobianPoint::to_jacobian(T::g()).multiply(nonce, curve),
-            curve,
-        );
-
         let n = &T::n();
 
+        let encoded_nonce = T::g()
+            .to_jacobian()
+            .multiply(nonce, curve)
+            .from_jacobian(curve);
         let r = encoded_nonce.x;
         let mut s = msg_hash
             .add_mod(&r.mul_mod(priv_key, n), n)
@@ -310,7 +345,7 @@ impl Signature {
         let mut v = RU256::from_str("0x1b").unwrap();
 
         // use lower order of n
-        if s < n.div_mod(&RU256::two(), n) {
+        if s <= T::n_div_2() {
             v = match encoded_nonce.y.v % 2 == U256::zero() {
                 true => v,
                 false => v.add_mod(&RU256::one(), n),
@@ -326,9 +361,9 @@ impl Signature {
         Signature { r, s, v }
     }
 
-    pub fn raw_recover(self, _msg_hash: RU256) -> ECAffinePoint {
-        ECAffinePoint::zero_point()
-    }
+    // pub fn raw_recover(self, _msg_hash: RU256) -> ECAffinePoint {
+    //     ECAffinePoint::zero_point()
+    // }
 }
 
 pub trait SECP256 {
@@ -337,7 +372,7 @@ pub trait SECP256 {
     fn n() -> RU256;
     fn a() -> RU256;
     fn b() -> RU256;
-    fn zero() -> ECAffinePoint;
+    fn n_div_2() -> RU256;
 }
 
 #[derive(Debug)]
@@ -374,11 +409,9 @@ impl SECP256 for K1 {
         RU256::from_str("0x7").unwrap()
     }
 
-    fn zero() -> ECAffinePoint {
-        ECAffinePoint {
-            x: RU256::zero(),
-            y: RU256::zero(),
-        }
+    fn n_div_2() -> RU256 {
+        RU256::from_str("0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0")
+            .unwrap()
     }
 }
 
@@ -392,34 +425,42 @@ impl SECP256 for R1 {
     // ******************************************************************
 
     fn p() -> RU256 {
-        return RU256::from_str("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff")
-            .unwrap();
+        return RU256::from_str(
+            "0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF",
+        )
+        .unwrap();
     }
     fn g() -> ECAffinePoint {
         return ECAffinePoint {
-            x: RU256::from_str("6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296")
-                .unwrap(),
-            y: RU256::from_str("4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5")
-                .unwrap(),
+            x: RU256::from_str(
+                "0x6B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296",
+            )
+            .unwrap(),
+            y: RU256::from_str(
+                "0x4FE342E2FE1A7F9B8EE7EB4A7C0F9E162BCE33576B315ECECBB6406837BF51F5",
+            )
+            .unwrap(),
         };
     }
     fn n() -> RU256 {
-        return RU256::from_str("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551")
-            .unwrap();
+        return RU256::from_str(
+            "0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551",
+        )
+        .unwrap();
     }
 
     fn a() -> RU256 {
-        RU256::from_str("ffffffff00000001000000000000000000000000fffffffffffffffffffffffc").unwrap()
+        RU256::from_str("0xFFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC")
+            .unwrap()
     }
 
     fn b() -> RU256 {
-        RU256::from_str("5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b").unwrap()
+        RU256::from_str("0x5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B")
+            .unwrap()
     }
 
-    fn zero() -> ECAffinePoint {
-        ECAffinePoint {
-            x: RU256::zero(),
-            y: RU256::zero(),
-        }
+    fn n_div_2() -> RU256 {
+        RU256::from_str("0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8")
+            .unwrap()
     }
 }

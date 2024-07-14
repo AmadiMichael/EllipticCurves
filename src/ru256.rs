@@ -48,14 +48,13 @@ impl RU256 {
     // 0 as additive identity; 1 as multiplicative identity;
     // ******************************************************************
 
+    // constants
     pub fn zero() -> Self {
         return Self::from_str("0x0").unwrap();
     }
     pub fn one() -> Self {
         return Self::from_str("0x1").unwrap();
     }
-
-    // constant
     pub fn two() -> Self {
         return Self::from_str("0x2").unwrap();
     }

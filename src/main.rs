@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
+#[allow(unused_imports)]
 use crate::{
     ru256::RU256,
-    secp256::{JacobianPoint, Signature, K1, R1, SECP256},
+    secp256::{Signature, K1, R1, SECP256},
 };
 
 pub mod bytes;
@@ -42,27 +43,30 @@ fn main() {
     //     JacobianPoint::from_jacobian(&JacobianPoint::to_jacobian(point1).double(&R1), &R1)
     // );
 
+    let curve = R1;
+    type Curve = R1;
+
     println!(
         "Public key: {:?}",
-        JacobianPoint::to_jacobian(K1::g())
+        Curve::g()
+            .to_jacobian()
             .multiply(
                 &RU256::from_str(
-                    "0xc2362fa72dcc0e1201473ee43071b1750e4879bb67bdd75e7d7efe963aa2d5a9"
+                    "0xc1435991560e77992aaa190216c8939e3dc1855576a979963a3fd7110c04c316"
                 )
                 .unwrap(),
-                &K1
+                &curve
             )
-            .from_jacobian(&K1)
+            .from_jacobian(&curve)
     );
-
     println!(
         "Signature: {:?}",
         Signature::raw_sign(
-            &RU256::from_str("0xc2362fa72dcc0e1201473ee43071b1750e4879bb67bdd75e7d7efe963aa2d5a9")
+            &RU256::from_str("0xc1435991560e77992aaa190216c8939e3dc1855576a979963a3fd7110c04c316")
                 .unwrap(),
             &RU256::from_str("0x04").unwrap(),
             &RU256::from_str("0x03").unwrap(),
-            &K1
+            &curve
         )
     )
 }
