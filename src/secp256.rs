@@ -394,9 +394,61 @@ impl Signature {
         return c.from_jacobian(curve).x == self.r;
     }
 
-    // pub fn raw_recover(self, _msg_hash: RU256) -> ECAffinePoint {
-    //     ECAffinePoint::zero_point()
-    // }
+    pub fn raw_recover<T: SECP256>(self, _msg_hash: &RU256, curve: &T) -> ECAffinePoint {
+        /*
+         * assert that x is a valid point on curve
+         *
+         * PubKey = ((encoded_nonce * s) + (G * (-h))) / r
+         */
+
+        assert!(
+            self.v == RU256::from_str("0x1b").unwrap()
+                || self.v == RU256::from_str("0x1c").unwrap(),
+            "invalid V",
+        );
+
+        let p = &T::p();
+        let n = &T::n();
+
+        // prove that self.r is a valid x on elliptic curve y**2 = x**3 + ax + b
+        let x_cubed_ax_b = self
+            .r
+            .exp_mod(&RU256::three(), p)
+            .add_mod(&T::a().mul_mod(&self.r, p), p)
+            .add_mod(&T::b(), p);
+        let possible_y = x_cubed_ax_b.exp_mod(&T::sqrt_exp_num(), p);
+        let y = match (self.v.v.div_mod(U256::from(2)).1 == U256::one())
+            ^ (possible_y.v.div_mod(U256::from(2)).1 == U256::one())
+        {
+            true => possible_y,
+            false => T::p().sub_mod(&possible_y, p),
+        };
+
+        assert_eq!(
+            x_cubed_ax_b.sub_mod(&y.mul_mod(&y, p), p),
+            RU256::zero(),
+            "sig invalid, r cannot be x coordinate of a point of the curve",
+        );
+        assert!(
+            self.r.v.div_mod(T::n().v).1 != U256::zero()
+                && self.s.v.div_mod(T::n().v).1 != U256::zero(),
+            "r % n or s % n is 0"
+        );
+
+        let a = ECAffinePoint {
+            x: self.r.clone(),
+            y,
+        }
+        .to_jacobian()
+        .multiply(&self.s, curve);
+        let b = T::g()
+            .to_jacobian()
+            .multiply(&n.sub_mod(&_msg_hash, n), curve);
+        let c = a.add(&b, curve);
+        let pub_key = c.multiply(&RU256::one().div_mod(&self.r, n), curve);
+
+        pub_key.from_jacobian(curve)
+    }
 }
 
 pub trait SECP256 {
@@ -406,6 +458,7 @@ pub trait SECP256 {
     fn a() -> RU256;
     fn b() -> RU256;
     fn n_div_2() -> RU256;
+    fn sqrt_exp_num() -> RU256;
 }
 
 #[derive(Debug)]
@@ -445,6 +498,14 @@ impl SECP256 for K1 {
     fn n_div_2() -> RU256 {
         RU256::from_str("0x7fffffffffffffffffffffffffffffff5d576e7357a4501ddfe92f46681b20a0")
             .unwrap()
+    }
+
+    fn sqrt_exp_num() -> RU256 {
+        let p = Self::p();
+        let p_plus_1 = p.v.checked_add(U256::one()).unwrap();
+        return RU256 {
+            v: p_plus_1.div_mod(U256::from(4)).0,
+        };
     }
 }
 
@@ -495,5 +556,13 @@ impl SECP256 for R1 {
     fn n_div_2() -> RU256 {
         RU256::from_str("0x7fffffff800000007fffffffffffffffde737d56d38bcf4279dce5617e3192a8")
             .unwrap()
+    }
+
+    fn sqrt_exp_num() -> RU256 {
+        let p = Self::p();
+        let p_plus_1 = p.v.checked_add(U256::one()).unwrap();
+        return RU256 {
+            v: p_plus_1.div_mod(U256::from(4)).0,
+        };
     }
 }
