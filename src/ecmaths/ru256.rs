@@ -213,7 +213,7 @@ impl PartialEq for RU256 {
 
 #[cfg(test)]
 mod tests {
-    use crate::ru256::RU256;
+    use crate::ecmaths::ru256::RU256;
     use std::str::FromStr;
 
     #[test]
