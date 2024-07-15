@@ -46,27 +46,27 @@ fn main() {
     let curve = R1;
     type Curve = R1;
 
-    println!(
-        "Public key: {:?}",
-        Curve::g()
-            .to_jacobian()
-            .multiply(
-                &RU256::from_str(
-                    "0xc1435991560e77992aaa190216c8939e3dc1855576a979963a3fd7110c04c316"
-                )
-                .unwrap(),
-                &curve
-            )
-            .from_jacobian(&curve)
-    );
-    println!(
-        "Signature: {:?}",
-        Signature::raw_sign(
+    let pub_key = Curve::g()
+        .to_jacobian()
+        .multiply(
             &RU256::from_str("0xc1435991560e77992aaa190216c8939e3dc1855576a979963a3fd7110c04c316")
                 .unwrap(),
-            &RU256::from_str("0x04").unwrap(),
-            &RU256::from_str("0x03").unwrap(),
-            &curve
+            &curve,
         )
-    )
+        .from_jacobian(&curve);
+    println!("Public key: {:?}", &pub_key);
+
+    let signature = Signature::raw_sign(
+        &RU256::from_str("0xc1435991560e77992aaa190216c8939e3dc1855576a979963a3fd7110c04c316")
+            .unwrap(),
+        &RU256::from_str("0x04").unwrap(),
+        &RU256::from_str("0x03").unwrap(),
+        &curve,
+    );
+    println!("Signature: {:?}", signature);
+
+    println!(
+        "Verify sig: {}",
+        signature.raw_verify(&RU256::from_str("0x04").unwrap(), &pub_key, &curve)
+    );
 }

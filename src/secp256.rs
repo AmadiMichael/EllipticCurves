@@ -144,10 +144,10 @@ impl ECAffinePoint {
         r
     }
 
-    pub fn to_jacobian(self) -> JacobianPoint {
+    pub fn to_jacobian(&self) -> JacobianPoint {
         JacobianPoint {
-            x: self.x,
-            y: self.y,
+            x: self.x.clone(),
+            y: self.y.clone(),
             z: RU256::one(),
         }
     }
@@ -331,7 +331,13 @@ impl Signature {
         msg_hash: &RU256,
         nonce: &RU256,
         curve: &T,
-    ) -> Signature {
+    ) -> Self {
+        /*
+         * k = nonce
+         * r, y = (k * G).x, (k * G).y
+         * s = 1/k * (h + (p * r))
+         * v = 27 + xor((s < half_n), (y % 2 == 0))
+         */
         let n = &T::n();
 
         let encoded_nonce = T::g()
@@ -359,6 +365,33 @@ impl Signature {
         }
 
         Signature { r, s, v }
+    }
+
+    pub fn raw_verify<T: SECP256>(
+        &self,
+        msg_hash: &RU256,
+        pub_key: &ECAffinePoint,
+        curve: &T,
+    ) -> bool {
+        /*
+         * sInv = 1/s
+         * a = G * (sInv * h)
+         * b = PubKey * (sInv * r)
+         * c = a + b
+         * c.x == r
+         */
+
+        let n = &T::n();
+
+        let a = &T::g()
+            .to_jacobian()
+            .multiply(&msg_hash.div_mod(&self.s, n), curve);
+        let b = pub_key
+            .to_jacobian()
+            .multiply(&self.r.div_mod(&self.s, n), curve);
+        let c = a.add(&b, curve);
+
+        return c.from_jacobian(curve).x == self.r;
     }
 
     // pub fn raw_recover(self, _msg_hash: RU256) -> ECAffinePoint {
