@@ -1,4 +1,7 @@
-use crate::{curves::SECP256, ecmaths::affine::ECAffinePoint, ecmaths::ru256::RU256};
+use crate::{
+    curves::SECP256,
+    ecmaths::{affine::ECAffinePoint, jacobian::JacobianPoint, ru256::RU256},
+};
 use primitive_types::U256;
 use std::str::FromStr;
 
@@ -76,13 +79,15 @@ impl Signature {
 
         let n = &T::n();
 
-        let a = &T::g()
-            .to_jacobian()
-            .multiply(&msg_hash.div_mod(&self.s, n), curve);
-        let b = pub_key
-            .to_jacobian()
-            .multiply(&self.r.div_mod(&self.s, n), curve);
-        let c = a.add(&b, curve);
+        let s_inv = RU256::one().div_mod(&self.s, n);
+        let a = msg_hash.mul_mod(&s_inv, n);
+        let b = self.r.mul_mod(&s_inv, n);
+        let c = T::g().to_jacobian().strauss_shamir_multiplication(
+            &pub_key.to_jacobian(),
+            &a,
+            &b,
+            curve,
+        );
 
         return c.from_jacobian(curve).x == self.r;
     }
@@ -128,16 +133,18 @@ impl Signature {
             "r % n or s % n is 0"
         );
 
-        let a = ECAffinePoint {
+        let c = JacobianPoint {
             x: self.r.clone(),
             y,
+            z: RU256::one(),
         }
-        .to_jacobian()
-        .multiply(&self.s, curve);
-        let b = T::g()
-            .to_jacobian()
-            .multiply(&n.sub_mod(&_msg_hash, n), curve);
-        let c = a.add(&b, curve);
+        .strauss_shamir_multiplication(
+            &T::g().to_jacobian(),
+            &self.s,
+            &n.sub_mod(&_msg_hash, n),
+            curve,
+        );
+
         let pub_key = c.multiply(&RU256::one().div_mod(&self.r, n), curve);
 
         pub_key.from_jacobian(curve)

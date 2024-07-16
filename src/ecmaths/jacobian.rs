@@ -123,7 +123,7 @@ impl JacobianPoint {
         Self { x, y, z }
     }
 
-    pub fn multiply<T: SECP256>(self, scalar: &RU256, curve: &T) -> Self {
+    pub fn multiply<T: SECP256>(&self, scalar: &RU256, curve: &T) -> Self {
         // Double and add method
         /*
          * R = 0
@@ -135,7 +135,7 @@ impl JacobianPoint {
             return Self::zero_point();
         }
         if scalar == &RU256::one() {
-            return self;
+            return self.clone();
         }
 
         let mut r = Self::zero_point();
@@ -164,5 +164,69 @@ impl JacobianPoint {
         let y = self.y.mul_mod(&zz.mul_mod(&z, p), p);
 
         ECAffinePoint { x, y }
+    }
+
+    // Efficiently calculate aP + bG without using 2 ec mul and 1 ec add
+    pub fn strauss_shamir_multiplication<T: SECP256>(
+        &self,
+        other: &Self,
+        a: &RU256,
+        b: &RU256,
+        curve: &T,
+    ) -> Self {
+        /*
+         * R = 0
+         * LOOP: R = (R * 2) + (a[i] * self) + (b[i] * other)
+         * Note: i starts from 255 and goes down up until 0 (inclusive)
+         */
+        // implementation
+        let mut r = Self::zero_point();
+        let mut i = 255;
+
+        let one = U256::one();
+        let self_other = self.add(&other, curve);
+
+        while i != -1 {
+            r = r.double(curve);
+
+            match (((a.v >> i) & one == one), ((b.v >> i) & one == one)) {
+                (true, true) => r = r.add(&self_other, curve),
+                (true, false) => r = r.add(&self, curve),
+                (false, true) => r = r.add(&other, curve),
+                (false, false) => {}
+            }
+
+            i -= 1;
+        }
+
+        r
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        curves::{r1::R1, SECP256},
+        ecmaths::ru256::RU256,
+    };
+
+    #[test]
+    fn test_shamir() {
+        let curve = R1;
+        let p = R1::g().multiply(&RU256::two(), &curve).to_jacobian();
+        let q = R1::g().multiply(&&RU256::four(), &curve).to_jacobian();
+        let a = RU256::three();
+        let b = RU256::eight();
+
+        let r = p
+            .multiply(&a, &curve)
+            .add(&q.multiply(&b, &curve), &curve)
+            .from_jacobian(&curve);
+
+        let s = p
+            .strauss_shamir_multiplication(&q, &a, &b, &curve)
+            .from_jacobian(&curve);
+
+        assert_eq!(r, s);
     }
 }

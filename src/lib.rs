@@ -19,7 +19,7 @@ mod tests {
         let pub_key = priv_key.to_pub_key(&curve);
 
         for i in 0..10 {
-            let msg_hash = RU256::from_str(format!("0x0{}", i).as_str()).unwrap();
+            let msg_hash = RU256::from_str(format!("0x0{}", i + 1).as_str()).unwrap();
             let nonce = RU256::from_str(format!("0x0{}", 10 - i).as_str()).unwrap();
 
             let signature = priv_key.raw_sign(&msg_hash, &nonce, &curve);
